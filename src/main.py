@@ -68,7 +68,7 @@ def run_weekly(guesty: GuestyClient, telegram: TelegramClient, formatter: Messag
         logger.info("Reservas de la semana obtenidas: %d", len(todas))
 
         # Agrupar por día de check-out y construir slots
-        from src.guesty_client import _parse_utc_to_madrid, _extract_guests, _extract_notes
+        from src.guesty_client import _parse_utc_to_madrid, _resolve_time, _extract_guests, _extract_notes
 
         slots_por_dia: dict[str, list] = {d: [] for d in dias}
 
@@ -81,10 +81,12 @@ def run_weekly(guesty: GuestyClient, telegram: TelegramClient, formatter: Messag
                 reservas_por_listing[lid].append(r)
 
         for r in todas:
-            checkout_dt = _parse_utc_to_madrid(r.get("plannedDeparture") or r.get("checkOut"))
-            if not checkout_dt:
+            checkout_time_w, checkout_date_w = _resolve_time(
+                r.get("plannedDeparture"), r.get("checkOut")
+            )
+            if not checkout_date_w:
                 continue
-            dia_str = checkout_dt.strftime("%Y-%m-%d")
+            dia_str = checkout_date_w
             if dia_str not in slots_por_dia:
                 continue
 
@@ -95,7 +97,6 @@ def run_weekly(guesty: GuestyClient, telegram: TelegramClient, formatter: Messag
             ) or listing_id or "Apartamento desconocido"
 
             out_adults, out_children, out_infants = _extract_guests(r)
-            checkout_time = checkout_dt.strftime("%H:%M")
 
             # Buscar la siguiente reserva en la misma propiedad (con detalles completos)
             next_res_basic = guesty.get_next_reservation(listing_id, dia_str) if listing_id else None
@@ -103,11 +104,9 @@ def run_weekly(guesty: GuestyClient, telegram: TelegramClient, formatter: Messag
             if next_res_basic:
                 next_id = next_res_basic.get("_id")
                 next_res = guesty.get_reservation_detail(next_id) if next_id else next_res_basic
-                checkin_dt = _parse_utc_to_madrid(
-                    next_res.get("plannedArrival") or next_res.get("checkIn")
+                checkin_time, checkin_date = _resolve_time(
+                    next_res.get("plannedArrival"), next_res.get("checkIn")
                 )
-                checkin_time = checkin_dt.strftime("%H:%M") if checkin_dt else None
-                checkin_date = checkin_dt.strftime("%Y-%m-%d") if checkin_dt else None
                 checkin_is_today = checkin_date == dia_str if checkin_date else False
                 in_adults, in_children, in_infants = _extract_guests(next_res)
                 incoming_notes = _extract_notes(next_res)
@@ -116,7 +115,7 @@ def run_weekly(guesty: GuestyClient, telegram: TelegramClient, formatter: Messag
                     "listing_id": listing_id,
                     "listing_name": listing_name,
                     "checkout_reservation_id": r.get("_id", ""),
-                    "checkout_time": checkout_time,
+                    "checkout_time": checkout_time_w,
                     "checkout_date": dia_str,
                     "outgoing_adults": out_adults,
                     "outgoing_children": out_children,
@@ -137,7 +136,7 @@ def run_weekly(guesty: GuestyClient, telegram: TelegramClient, formatter: Messag
                     "listing_id": listing_id,
                     "listing_name": listing_name,
                     "checkout_reservation_id": r.get("_id", ""),
-                    "checkout_time": checkout_time,
+                    "checkout_time": checkout_time_w,
                     "checkout_date": dia_str,
                     "outgoing_adults": out_adults,
                     "outgoing_children": out_children,

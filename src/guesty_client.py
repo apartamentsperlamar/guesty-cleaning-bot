@@ -41,6 +41,27 @@ def _parse_utc_to_madrid(dt_str: str | None):
         return None
 
 
+def _resolve_time(planned_local: str | None, utc_dt_str: str | None, fallback_date: str | None = None) -> tuple[str | None, str | None]:
+    """
+    Devuelve (HH:MM, YYYY-MM-DD) combinando la hora local planeada con la fecha UTC.
+
+    - planned_local: string "HH:MM" ya en hora local Madrid (plannedDeparture / plannedArrival)
+    - utc_dt_str: datetime ISO 8601 UTC (checkOut / checkIn) — se usa para extraer la fecha
+    """
+    dt = _parse_utc_to_madrid(utc_dt_str)
+    date = dt.strftime("%Y-%m-%d") if dt else fallback_date
+
+    # plannedDeparture/plannedArrival son horas locales, no ISO datetimes
+    if planned_local and isinstance(planned_local, str) and "T" not in planned_local:
+        return planned_local[:5], date
+
+    # Sin hora planeada → usar la hora UTC convertida
+    if dt:
+        return dt.strftime("%H:%M"), date
+
+    return None, date
+
+
 def _extract_guests(reservation: dict) -> tuple[int, int, int]:
     """
     Extrae (adultos, niños, bebés) de una reserva.
@@ -413,15 +434,12 @@ class GuestyClient:
             else:
                 listing_name = listing_id or "Apartamento desconocido"
 
-            # plannedDeparture = hora acordada de salida (prioridad sobre checkOut estándar)
-            raw_checkout = reservation.get("plannedDeparture") or reservation.get("checkOut")
-            checkout_dt = _parse_utc_to_madrid(raw_checkout)
-            logger.info(
-                "DEBUG TIME checkout [%s]: plannedDeparture=%s checkOut=%s → %s",
-                res_id, reservation.get("plannedDeparture"), reservation.get("checkOut"), checkout_dt,
+            # plannedDeparture es hora local "HH:MM"; checkOut es UTC para la fecha
+            checkout_time, checkout_date = _resolve_time(
+                reservation.get("plannedDeparture"),
+                reservation.get("checkOut"),
+                date_str,
             )
-            checkout_time = checkout_dt.strftime("%H:%M") if checkout_dt else None
-            checkout_date = checkout_dt.strftime("%Y-%m-%d") if checkout_dt else date_str
 
             out_adults, out_children, out_infants = _extract_guests(reservation)
 
@@ -432,15 +450,11 @@ class GuestyClient:
                 next_id = next_res_basic.get("_id")
                 next_res = self.get_reservation_detail(next_id) if next_id else next_res_basic
 
-                # plannedArrival = hora acordada de llegada (prioridad sobre checkIn estándar)
-                raw_checkin = next_res.get("plannedArrival") or next_res.get("checkIn")
-                checkin_dt = _parse_utc_to_madrid(raw_checkin)
-                logger.info(
-                    "DEBUG TIME checkin [%s]: plannedArrival=%s checkIn=%s → %s",
-                    next_id, next_res.get("plannedArrival"), next_res.get("checkIn"), checkin_dt,
+                # plannedArrival es hora local "HH:MM"; checkIn es UTC para la fecha
+                checkin_time, checkin_date = _resolve_time(
+                    next_res.get("plannedArrival"),
+                    next_res.get("checkIn"),
                 )
-                checkin_time = checkin_dt.strftime("%H:%M") if checkin_dt else None
-                checkin_date = checkin_dt.strftime("%Y-%m-%d") if checkin_dt else None
                 checkin_is_today = checkin_date == date_str if checkin_date else False
                 in_adults, in_children, in_infants = _extract_guests(next_res)
                 incoming_notes = _extract_notes(next_res)
