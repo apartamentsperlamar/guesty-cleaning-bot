@@ -42,44 +42,44 @@ def _parse_utc_to_madrid(dt_str: str | None):
 
 
 def _extract_guests(reservation: dict) -> tuple[int, int, int]:
-    """Extrae (adultos, niños, bebés) de una reserva."""
-    guests_details = reservation.get("guestsDetails") or {}
+    """
+    Extrae (adultos, niños, bebés) de una reserva.
+    En Guesty Open API v1 el desglose está en guestStay o stay,
+    no como campos directos adults/children.
+    """
+    # guestStay contiene el desglose real: {adults, children, infants}
+    guest_stay = reservation.get("guestStay") or reservation.get("stay") or {}
 
     adults = int(
-        reservation.get("adults")
-        or reservation.get("adultsCount")
-        or guests_details.get("adults")
+        guest_stay.get("adults")
+        or guest_stay.get("adultsCount")
+        or reservation.get("adults")
         or 0
     )
     children = int(
-        reservation.get("children")
-        or reservation.get("childrenCount")
-        or guests_details.get("children")
+        guest_stay.get("children")
+        or guest_stay.get("childrenCount")
+        or reservation.get("children")
         or 0
     )
     infants = int(
-        reservation.get("infantsCount")
+        guest_stay.get("infants")
+        or guest_stay.get("infantsCount")
         or reservation.get("infants")
-        or guests_details.get("infantsCount")
-        or guests_details.get("infants")
+        or reservation.get("infantsCount")
         or 0
     )
 
-    # Si la API devuelve solo el total y no el desglose, usar el total como adultos
-    if adults == 0 and children == 0:
+    # Fallback: si no hay desglose, usar el total como adultos
+    if adults == 0 and children == 0 and infants == 0:
         total = int(
-            reservation.get("guests")
-            or reservation.get("guestsCount")
+            reservation.get("guestsCount")
+            or reservation.get("numberOfGuests")
+            or guest_stay.get("numberOfGuests")
             or 0
         )
         adults = total
 
-    logger.info(
-        "Huéspedes [%s]: calculado adults=%s children=%s infants=%s | todas las claves: %s",
-        reservation.get("_id", "?"),
-        adults, children, infants,
-        sorted(reservation.keys()),
-    )
     return adults, children, infants
 
 
