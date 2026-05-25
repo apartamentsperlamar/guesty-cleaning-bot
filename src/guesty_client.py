@@ -328,6 +328,31 @@ class GuestyClient:
         wait=wait_exponential(multiplier=2, min=3, max=30),
         before=before_log(logger, logging.DEBUG),
     )
+    def get_reservation_detail(self, reservation_id: str) -> dict | None:
+        """
+        Obtiene los detalles completos de una reserva por su ID.
+        El endpoint de lista devuelve solo campos básicos; este devuelve todos los campos
+        incluyendo huéspedes, notas y customFields.
+        """
+        response = requests.get(
+            f"{self.BASE_URL}/v1/reservations/{reservation_id}",
+            headers=self._get_headers(),
+            timeout=30,
+        )
+        if response.status_code == 401:
+            self.authenticate()
+            raise requests.HTTPError("Token renovado, reintentando", response=response)
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data, dict) and "data" in data and isinstance(data["data"], dict):
+            return data["data"]
+        return data
+
+    @retry(
+        stop=stop_after_attempt(4),
+        wait=wait_exponential(multiplier=2, min=3, max=30),
+        before=before_log(logger, logging.DEBUG),
+    )
     def get_listing(self, listing_id: str) -> dict | None:
         """Devuelve los datos de un apartamento por su ID. NO llama a _ensure_token."""
         try:
@@ -364,15 +389,6 @@ class GuestyClient:
             logger.info("No hay check-outs el %s. Sin limpiezas.", date_str)
             return []
 
-        # LOG DE DIAGNÓSTICO — se eliminará una vez confirmados los campos correctos
-        if checkouts:
-            sample = checkouts[0]
-            logger.info("=== DIAGNÓSTICO RESERVA SALIENTE ===")
-            logger.info("Campos disponibles: %s", sorted(sample.keys()))
-            for key in ("guests", "guestsCount", "adults", "adultsCount", "children", "childrenCount", "infants", "infantsCount", "guestsDetails"):
-                if key in sample:
-                    logger.info("  %s = %s", key, sample[key])
-
         slots = []
         for reservation in checkouts:
             listing_id = (
@@ -380,6 +396,13 @@ class GuestyClient:
                 or (reservation.get("listing") or {}).get("_id")
                 or ""
             )
+
+            # Obtener detalles completos de la reserva saliente (el endpoint de lista
+            # solo devuelve campos básicos; el detalle incluye huéspedes, notas, etc.)
+            res_id = reservation.get("_id")
+            full_res = self.get_reservation_detail(res_id) if res_id else None
+            if full_res:
+                reservation = full_res
 
             listing = self.get_listing(listing_id) if listing_id else None
             if listing:
@@ -400,15 +423,12 @@ class GuestyClient:
 
             out_guests, out_infants = _extract_guests(reservation)
 
-            next_res = self.get_next_reservation(listing_id, date_str) if listing_id else None
+            next_res_basic = self.get_next_reservation(listing_id, date_str) if listing_id else None
 
-            if next_res:
-                # LOG DE DIAGNÓSTICO — se eliminará una vez confirmados los campos correctos
-                logger.info("=== DIAGNÓSTICO RESERVA ENTRANTE (%s) ===", listing_name)
-                logger.info("Campos disponibles: %s", sorted(next_res.keys()))
-                for key in ("guests", "guestsCount", "adults", "adultsCount", "children", "childrenCount", "infants", "infantsCount", "guestsDetails", "notes", "guestNote", "customFields"):
-                    if key in next_res:
-                        logger.info("  %s = %s", key, next_res[key])
+            if next_res_basic:
+                # Obtener detalles completos de la reserva entrante
+                next_id = next_res_basic.get("_id")
+                next_res = self.get_reservation_detail(next_id) if next_id else next_res_basic
 
                 checkin_dt = _parse_utc_to_madrid(
                     next_res.get("checkIn") or next_res.get("plannedDeparture")
@@ -428,7 +448,7 @@ class GuestyClient:
                     "outgoing_guests": out_guests,
                     "outgoing_infants": out_infants,
                     "has_next_reservation": True,
-                    "checkin_reservation_id": next_res.get("_id"),
+                    "checkin_reservation_id": next_res_basic.get("_id"),
                     "checkin_time": checkin_time,
                     "checkin_date": checkin_date,
                     "checkin_is_today": checkin_is_today,
@@ -438,6 +458,7 @@ class GuestyClient:
                     "high_priority": checkin_is_today,
                 }
             else:
+                next_res = None
                 slot = {
                     "listing_id": listing_id,
                     "listing_name": listing_name,
