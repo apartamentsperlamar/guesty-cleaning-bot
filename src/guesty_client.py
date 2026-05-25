@@ -364,6 +364,15 @@ class GuestyClient:
             logger.info("No hay check-outs el %s. Sin limpiezas.", date_str)
             return []
 
+        # LOG DE DIAGNÓSTICO — se eliminará una vez confirmados los campos correctos
+        if checkouts:
+            sample = checkouts[0]
+            logger.info("=== DIAGNÓSTICO RESERVA SALIENTE ===")
+            logger.info("Campos disponibles: %s", sorted(sample.keys()))
+            for key in ("guests", "guestsCount", "adults", "adultsCount", "children", "childrenCount", "infants", "infantsCount", "guestsDetails"):
+                if key in sample:
+                    logger.info("  %s = %s", key, sample[key])
+
         slots = []
         for reservation in checkouts:
             listing_id = (
@@ -394,6 +403,13 @@ class GuestyClient:
             next_res = self.get_next_reservation(listing_id, date_str) if listing_id else None
 
             if next_res:
+                # LOG DE DIAGNÓSTICO — se eliminará una vez confirmados los campos correctos
+                logger.info("=== DIAGNÓSTICO RESERVA ENTRANTE (%s) ===", listing_name)
+                logger.info("Campos disponibles: %s", sorted(next_res.keys()))
+                for key in ("guests", "guestsCount", "adults", "adultsCount", "children", "childrenCount", "infants", "infantsCount", "guestsDetails", "notes", "guestNote", "customFields"):
+                    if key in next_res:
+                        logger.info("  %s = %s", key, next_res[key])
+
                 checkin_dt = _parse_utc_to_madrid(
                     next_res.get("checkIn") or next_res.get("plannedDeparture")
                 )
