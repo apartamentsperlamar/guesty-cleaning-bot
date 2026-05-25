@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 
 import pytz
 import requests
-from tenacity import retry, stop_after_attempt, wait_exponential, before_log, after_log
+from tenacity import retry, stop_after_attempt, wait_exponential, before_log
 
 logger = logging.getLogger(__name__)
 MADRID = pytz.timezone("Europe/Madrid")
@@ -47,7 +47,6 @@ def _extract_guests(reservation: dict) -> tuple[int, int]:
     adults = reservation.get("adults", 0) or 0
     children = reservation.get("children", 0) or 0
     guests = adults + children
-
     infants = (
         reservation.get("infantsCount")
         or reservation.get("infants")
@@ -86,12 +85,13 @@ class GuestyClient:
         self.client_secret = os.environ["GUESTY_CLIENT_SECRET"]
         self.token = None
         self.token_expiry = None
+        # Autenticar una sola vez al inicializar el cliente
+        self.authenticate()
 
     @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=2, max=30),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=2, min=5, max=60),
         before=before_log(logger, logging.DEBUG),
-        after=after_log(logger, logging.DEBUG),
     )
     def authenticate(self):
         """Obtiene un token de acceso usando client_credentials."""
@@ -116,49 +116,57 @@ class GuestyClient:
         logger.info("Autenticación exitosa. Token válido hasta: %s", self.token_expiry)
 
     def _ensure_token(self):
-        """Garantiza que el token es válido, renovándolo si es necesario."""
+        """Renueva el token solo si ha expirado. No usar dentro de métodos con @retry."""
         if self.token is None or datetime.now(timezone.utc) >= self.token_expiry:
             self.authenticate()
 
     def _get_headers(self) -> dict:
-        """Devuelve las cabeceras HTTP con el token Bearer."""
         return {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
         }
 
     @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=2, max=30),
+        stop=stop_after_attempt(4),
+        wait=wait_exponential(multiplier=2, min=3, max=30),
         before=before_log(logger, logging.DEBUG),
     )
+    def _fetch_page(self, filters: list, limit: int, skip: int) -> dict:
+        """
+        Hace una sola llamada GET a /v1/reservations.
+        NO llama a _ensure_token — el token ya fue obtenido antes de entrar al bucle.
+        Si recibe 401 renueva el token y reintenta.
+        """
+        params = {
+            "filters": json.dumps(filters),
+            "limit": limit,
+            "skip": skip,
+        }
+        response = requests.get(
+            f"{self.BASE_URL}/v1/reservations",
+            headers=self._get_headers(),
+            params=params,
+            timeout=30,
+        )
+        if response.status_code == 401:
+            logger.warning("Token expirado (401). Renovando...")
+            self.authenticate()
+            raise requests.HTTPError("Token renovado, reintentando", response=response)
+        logger.debug(
+            "GET /v1/reservations skip=%d status=%s", skip, response.status_code
+        )
+        response.raise_for_status()
+        return response.json()
+
     def _get_reservations(self, filters: list) -> list:
-        """Realiza llamadas paginadas a /v1/reservations con los filtros dados."""
-        self._ensure_token()
+        """Obtiene todas las páginas de reservas para los filtros dados."""
+        # El token ya está garantizado antes de llamar a este método
         all_reservations = []
         skip = 0
         limit = 100
 
         while True:
-            params = {
-                "filters": json.dumps(filters),
-                "limit": limit,
-                "skip": skip,
-            }
-            response = requests.get(
-                f"{self.BASE_URL}/v1/reservations",
-                headers=self._get_headers(),
-                params=params,
-                timeout=30,
-            )
-            logger.debug(
-                "GET /v1/reservations status=%s skip=%d url=%s",
-                response.status_code,
-                skip,
-                response.url,
-            )
-            response.raise_for_status()
-            data = response.json()
+            data = self._fetch_page(filters, limit, skip)
 
             results = (
                 data.get("results")
@@ -188,8 +196,9 @@ class GuestyClient:
         """
         logger.info("Buscando reservas con check-out el %s...", date_str)
         utc_start, utc_end = _date_to_utc_range(date_str)
-        logger.info("Rango UTC equivalente: %s → %s", utc_start, utc_end)
+        logger.info("Rango UTC: %s → %s", utc_start, utc_end)
 
+        self._ensure_token()
         filters = [
             {"field": "checkOut", "operator": "$gte", "value": utc_start},
             {"field": "checkOut", "operator": "$lte", "value": utc_end},
@@ -204,6 +213,7 @@ class GuestyClient:
         logger.info("Buscando reservas con check-in el %s...", date_str)
         utc_start, utc_end = _date_to_utc_range(date_str)
 
+        self._ensure_token()
         filters = [
             {"field": "checkIn", "operator": "$gte", "value": utc_start},
             {"field": "checkIn", "operator": "$lte", "value": utc_end},
@@ -219,6 +229,7 @@ class GuestyClient:
         utc_start, _ = _date_to_utc_range(start_date)
         _, utc_end = _date_to_utc_range(end_date)
 
+        self._ensure_token()
         filters = [
             {"field": "checkOut", "operator": "$gte", "value": utc_start},
             {"field": "checkOut", "operator": "$lte", "value": utc_end},
@@ -229,14 +240,15 @@ class GuestyClient:
         return reservations
 
     @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=2, max=30),
+        stop=stop_after_attempt(4),
+        wait=wait_exponential(multiplier=2, min=3, max=30),
         before=before_log(logger, logging.DEBUG),
     )
     def get_next_reservation(self, listing_id: str, after_date: str) -> dict | None:
-        """Devuelve la siguiente reserva confirmada en el apartamento, a partir de after_date."""
-        self._ensure_token()
-        # Buscar check-ins desde el inicio del día indicado en Madrid
+        """
+        Devuelve la siguiente reserva activa en el apartamento, a partir de after_date.
+        NO llama a _ensure_token — el token ya fue obtenido antes del bucle principal.
+        """
         utc_start, _ = _date_to_utc_range(after_date)
 
         filters = [
@@ -256,9 +268,10 @@ class GuestyClient:
             params=params,
             timeout=30,
         )
-        logger.debug(
-            "GET /v1/reservations (next) listing=%s status=%s", listing_id, response.status_code
-        )
+        if response.status_code == 401:
+            logger.warning("Token expirado (401) en get_next_reservation. Renovando...")
+            self.authenticate()
+            raise requests.HTTPError("Token renovado, reintentando", response=response)
         response.raise_for_status()
         data = response.json()
 
@@ -271,25 +284,30 @@ class GuestyClient:
         return results[0] if results else None
 
     @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=2, max=30),
+        stop=stop_after_attempt(4),
+        wait=wait_exponential(multiplier=2, min=3, max=30),
         before=before_log(logger, logging.DEBUG),
     )
     def get_listing(self, listing_id: str) -> dict | None:
-        """Devuelve los datos de un apartamento por su ID."""
-        self._ensure_token()
+        """Devuelve los datos de un apartamento por su ID. NO llama a _ensure_token."""
         try:
             response = requests.get(
                 f"{self.BASE_URL}/v1/listings/{listing_id}",
                 headers=self._get_headers(),
                 timeout=30,
             )
+            if response.status_code == 401:
+                logger.warning("Token expirado (401) en get_listing. Renovando...")
+                self.authenticate()
+                raise requests.HTTPError("Token renovado, reintentando", response=response)
             logger.debug("GET /v1/listings/%s status=%s", listing_id, response.status_code)
             response.raise_for_status()
             data = response.json()
             if isinstance(data, dict) and "data" in data and isinstance(data["data"], dict):
                 return data["data"]
             return data
+        except requests.HTTPError:
+            raise
         except Exception as e:
             logger.warning("No se pudo obtener el listing %s: %s", listing_id, e)
             return None
