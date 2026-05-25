@@ -48,14 +48,18 @@ def _fecha_corta(date_str: str | None) -> str | None:
         return date_str
 
 
-def _formato_huespedes(guests: int | None, infants: int | None) -> str:
-    """Devuelve texto legible de huéspedes y bebés."""
-    if guests is None:
+def _formato_huespedes(adults: int | None, children: int | None, infants: int | None) -> str:
+    """Devuelve texto legible con desglose de adultos, niños y bebés."""
+    if adults is None:
         return "Sin datos"
-    parts = [f"{guests} huésped{'es' if guests != 1 else ''}"]
+    parts = []
+    if adults:
+        parts.append(f"{adults} adulto{'s' if adults != 1 else ''}")
+    if children:
+        parts.append(f"{children} niño{'s' if children != 1 else ''}")
     if infants:
         parts.append(f"{infants} bebé{'s' if infants != 1 else ''}")
-    return " + ".join(parts)
+    return " + ".join(parts) if parts else "Sin datos"
 
 
 def _sort_key(slot: dict):
@@ -107,12 +111,10 @@ class MessageFormatter:
                 lines.append("🔑 Sin reserva siguiente")
 
             # Línea de huéspedes entrantes
-            in_guests = slot.get("incoming_guests")
+            in_adults = slot.get("incoming_adults")
+            in_children = slot.get("incoming_children")
             in_infants = slot.get("incoming_infants")
-            if in_guests is not None:
-                entrantes_txt = _formato_huespedes(in_guests, in_infants)
-            else:
-                entrantes_txt = "Sin datos"
+            entrantes_txt = _formato_huespedes(in_adults, in_children, in_infants)
             lines.append(f"👥 Huéspedes entrantes: {entrantes_txt}")
 
             # Notas (máx 200 caracteres)
@@ -183,9 +185,10 @@ class MessageFormatter:
                     else:
                         checkin_txt = "Sin reserva"
 
-                    in_guests = slot.get("incoming_guests")
+                    in_adults = slot.get("incoming_adults")
+                    in_children = slot.get("incoming_children")
                     in_infants = slot.get("incoming_infants")
-                    entrantes_txt = _formato_huespedes(in_guests, in_infants)
+                    entrantes_txt = _formato_huespedes(in_adults, in_children, in_infants)
 
                     lines.append(
                         f"• {nombre} — Checkout: {checkout_t} | Checkin: {checkin_txt} | Entrantes: {entrantes_txt}"

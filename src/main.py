@@ -94,20 +94,22 @@ def run_weekly(guesty: GuestyClient, telegram: TelegramClient, formatter: Messag
                 (listing.get("nickname") or listing.get("name")) if listing else None
             ) or listing_id or "Apartamento desconocido"
 
-            out_guests, out_infants = _extract_guests(r)
+            out_adults, out_children, out_infants = _extract_guests(r)
             checkout_time = checkout_dt.strftime("%H:%M")
 
-            # Buscar la siguiente reserva en la misma propiedad
-            next_res = guesty.get_next_reservation(listing_id, dia_str) if listing_id else None
+            # Buscar la siguiente reserva en la misma propiedad (con detalles completos)
+            next_res_basic = guesty.get_next_reservation(listing_id, dia_str) if listing_id else None
 
-            if next_res:
+            if next_res_basic:
+                next_id = next_res_basic.get("_id")
+                next_res = guesty.get_reservation_detail(next_id) if next_id else next_res_basic
                 checkin_dt = _parse_utc_to_madrid(
                     next_res.get("checkIn") or next_res.get("plannedDeparture")
                 )
                 checkin_time = checkin_dt.strftime("%H:%M") if checkin_dt else None
                 checkin_date = checkin_dt.strftime("%Y-%m-%d") if checkin_dt else None
                 checkin_is_today = checkin_date == dia_str if checkin_date else False
-                in_guests, in_infants = _extract_guests(next_res)
+                in_adults, in_children, in_infants = _extract_guests(next_res)
                 incoming_notes = _extract_notes(next_res)
 
                 slot = {
@@ -116,14 +118,16 @@ def run_weekly(guesty: GuestyClient, telegram: TelegramClient, formatter: Messag
                     "checkout_reservation_id": r.get("_id", ""),
                     "checkout_time": checkout_time,
                     "checkout_date": dia_str,
-                    "outgoing_guests": out_guests,
+                    "outgoing_adults": out_adults,
+                    "outgoing_children": out_children,
                     "outgoing_infants": out_infants,
                     "has_next_reservation": True,
-                    "checkin_reservation_id": next_res.get("_id"),
+                    "checkin_reservation_id": next_res_basic.get("_id"),
                     "checkin_time": checkin_time,
                     "checkin_date": checkin_date,
                     "checkin_is_today": checkin_is_today,
-                    "incoming_guests": in_guests,
+                    "incoming_adults": in_adults,
+                    "incoming_children": in_children,
                     "incoming_infants": in_infants,
                     "incoming_notes": incoming_notes,
                     "high_priority": checkin_is_today,
@@ -135,14 +139,16 @@ def run_weekly(guesty: GuestyClient, telegram: TelegramClient, formatter: Messag
                     "checkout_reservation_id": r.get("_id", ""),
                     "checkout_time": checkout_time,
                     "checkout_date": dia_str,
-                    "outgoing_guests": out_guests,
+                    "outgoing_adults": out_adults,
+                    "outgoing_children": out_children,
                     "outgoing_infants": out_infants,
                     "has_next_reservation": False,
                     "checkin_reservation_id": None,
                     "checkin_time": None,
                     "checkin_date": None,
                     "checkin_is_today": False,
-                    "incoming_guests": None,
+                    "incoming_adults": None,
+                    "incoming_children": None,
                     "incoming_infants": None,
                     "incoming_notes": None,
                     "high_priority": False,

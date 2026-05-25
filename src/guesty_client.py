@@ -41,24 +41,40 @@ def _parse_utc_to_madrid(dt_str: str | None):
         return None
 
 
-def _extract_guests(reservation: dict) -> tuple[int, int]:
-    """Extrae (huéspedes, bebés) de una reserva."""
+def _extract_guests(reservation: dict) -> tuple[int, int, int]:
+    """Extrae (adultos, niños, bebés) de una reserva."""
     guests_details = reservation.get("guestsDetails") or {}
 
-    # Guesty v1 puede devolver el total en "guests" o desglosado en adults+children
-    total_direct = reservation.get("guests") or reservation.get("guestsCount") or 0
-    adults = reservation.get("adults") or reservation.get("adultsCount") or guests_details.get("adults") or 0
-    children = reservation.get("children") or reservation.get("childrenCount") or guests_details.get("children") or 0
-    guests = int(total_direct) if total_direct else int(adults) + int(children)
-
-    infants = (
+    adults = int(
+        reservation.get("adults")
+        or reservation.get("adultsCount")
+        or guests_details.get("adults")
+        or 0
+    )
+    children = int(
+        reservation.get("children")
+        or reservation.get("childrenCount")
+        or guests_details.get("children")
+        or 0
+    )
+    infants = int(
         reservation.get("infantsCount")
         or reservation.get("infants")
         or guests_details.get("infantsCount")
         or guests_details.get("infants")
         or 0
     )
-    return int(guests), int(infants)
+
+    # Si la API devuelve solo el total y no el desglose, usar el total como adultos
+    if adults == 0 and children == 0:
+        total = int(
+            reservation.get("guests")
+            or reservation.get("guestsCount")
+            or 0
+        )
+        adults = total
+
+    return adults, children, infants
 
 
 def _is_url(value: str) -> bool:
@@ -421,7 +437,7 @@ class GuestyClient:
             checkout_time = checkout_dt.strftime("%H:%M") if checkout_dt else None
             checkout_date = checkout_dt.strftime("%Y-%m-%d") if checkout_dt else date_str
 
-            out_guests, out_infants = _extract_guests(reservation)
+            out_adults, out_children, out_infants = _extract_guests(reservation)
 
             next_res_basic = self.get_next_reservation(listing_id, date_str) if listing_id else None
 
@@ -436,7 +452,7 @@ class GuestyClient:
                 checkin_time = checkin_dt.strftime("%H:%M") if checkin_dt else None
                 checkin_date = checkin_dt.strftime("%Y-%m-%d") if checkin_dt else None
                 checkin_is_today = checkin_date == date_str if checkin_date else False
-                in_guests, in_infants = _extract_guests(next_res)
+                in_adults, in_children, in_infants = _extract_guests(next_res)
                 incoming_notes = _extract_notes(next_res)
 
                 slot = {
@@ -445,34 +461,37 @@ class GuestyClient:
                     "checkout_reservation_id": reservation.get("_id", ""),
                     "checkout_time": checkout_time,
                     "checkout_date": checkout_date,
-                    "outgoing_guests": out_guests,
+                    "outgoing_adults": out_adults,
+                    "outgoing_children": out_children,
                     "outgoing_infants": out_infants,
                     "has_next_reservation": True,
                     "checkin_reservation_id": next_res_basic.get("_id"),
                     "checkin_time": checkin_time,
                     "checkin_date": checkin_date,
                     "checkin_is_today": checkin_is_today,
-                    "incoming_guests": in_guests,
+                    "incoming_adults": in_adults,
+                    "incoming_children": in_children,
                     "incoming_infants": in_infants,
                     "incoming_notes": incoming_notes,
                     "high_priority": checkin_is_today,
                 }
             else:
-                next_res = None
                 slot = {
                     "listing_id": listing_id,
                     "listing_name": listing_name,
                     "checkout_reservation_id": reservation.get("_id", ""),
                     "checkout_time": checkout_time,
                     "checkout_date": checkout_date,
-                    "outgoing_guests": out_guests,
+                    "outgoing_adults": out_adults,
+                    "outgoing_children": out_children,
                     "outgoing_infants": out_infants,
                     "has_next_reservation": False,
                     "checkin_reservation_id": None,
                     "checkin_time": None,
                     "checkin_date": None,
                     "checkin_is_today": False,
-                    "incoming_guests": None,
+                    "incoming_adults": None,
+                    "incoming_children": None,
                     "incoming_infants": None,
                     "incoming_notes": None,
                     "high_priority": False,
