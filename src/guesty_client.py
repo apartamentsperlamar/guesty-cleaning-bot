@@ -56,29 +56,58 @@ def _extract_guests(reservation: dict) -> tuple[int, int]:
     return int(guests), int(infants)
 
 
+def _is_url(value: str) -> bool:
+    """Devuelve True si el valor parece una URL."""
+    return value.startswith("http://") or value.startswith("https://")
+
+
+def _text_from_value(val) -> str | None:
+    """
+    Extrae texto legible de un valor de campo de Guesty.
+    Maneja strings, dicts como {'other': 'CUNA'} y otros tipos.
+    """
+    if not val:
+        return None
+    if isinstance(val, str):
+        text = val.strip()
+        return None if not text or _is_url(text) else text
+    if isinstance(val, dict):
+        # Intentar claves comunes de texto libre
+        for key in ("other", "text", "value", "content", "body"):
+            candidate = val.get(key)
+            if candidate and isinstance(candidate, str) and candidate.strip():
+                text = candidate.strip()
+                return None if _is_url(text) else text
+        # Fallback: unir todos los valores de string no vacíos y no URL
+        parts = [
+            str(v).strip()
+            for v in val.values()
+            if v and isinstance(v, str) and not _is_url(str(v).strip())
+        ]
+        return " | ".join(parts) if parts else None
+    return None
+
+
 def _extract_notes(reservation: dict) -> str | None:
     """
     Extrae notas libres de la reserva entrante.
-    Solo usa campos directos (no customFields, que contienen URLs u otros datos internos).
-    - otrasNotas: objeto {"other": "texto libre"} — se extrae el campo "other"
-    - guestNote / notes: cadena de texto — se muestra si no es una URL
+    Prioridad: customFields con contenido de texto → guestNote → notes.
+    Se descartan valores que sean URLs.
     """
-    # otrasNotas es un objeto {"other": "texto"} en la API de Guesty
-    otras = reservation.get("otrasNotas")
-    if isinstance(otras, dict):
-        text = otras.get("other") or otras.get("text") or otras.get("value")
-        if text and str(text).strip():
-            return str(text).strip()
-    elif isinstance(otras, str) and otras.strip():
-        return otras.strip()
+    # customFields: array de objetos con fieldValue
+    custom_fields = reservation.get("customFields")
+    if isinstance(custom_fields, list):
+        for field in custom_fields:
+            raw = field.get("fieldValue") or field.get("value") or field.get("text")
+            text = _text_from_value(raw)
+            if text:
+                return text
 
-    # guestNote y notes son cadenas de texto libres; filtrar URLs
-    for field in ("guestNote", "notes"):
-        value = reservation.get(field)
-        if value and isinstance(value, str):
-            val = value.strip()
-            if val and not val.startswith("http"):
-                return val
+    # Campos de texto directos, filtrando URLs
+    for key in ("guestNote", "notes"):
+        text = _text_from_value(reservation.get(key))
+        if text:
+            return text
 
     return None
 
