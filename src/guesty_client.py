@@ -80,6 +80,14 @@ def _extract_guests(reservation: dict) -> tuple[int, int, int]:
         )
         adults = total
 
+    logger.info(
+        "DEBUG huéspedes [%s]: guestStay=%s | stay=%s | guestsCount=%s | resultado=(%s,%s,%s)",
+        reservation.get("_id", "?"),
+        reservation.get("guestStay"),
+        reservation.get("stay"),
+        reservation.get("guestsCount"),
+        adults, children, infants,
+    )
     return adults, children, infants
 
 
