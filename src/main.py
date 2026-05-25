@@ -81,7 +81,7 @@ def run_weekly(guesty: GuestyClient, telegram: TelegramClient, formatter: Messag
                 reservas_por_listing[lid].append(r)
 
         for r in todas:
-            checkout_dt = _parse_utc_to_madrid(r.get("checkOut") or r.get("plannedArrival"))
+            checkout_dt = _parse_utc_to_madrid(r.get("plannedDeparture") or r.get("checkOut"))
             if not checkout_dt:
                 continue
             dia_str = checkout_dt.strftime("%Y-%m-%d")
@@ -104,7 +104,7 @@ def run_weekly(guesty: GuestyClient, telegram: TelegramClient, formatter: Messag
                 next_id = next_res_basic.get("_id")
                 next_res = guesty.get_reservation_detail(next_id) if next_id else next_res_basic
                 checkin_dt = _parse_utc_to_madrid(
-                    next_res.get("checkIn") or next_res.get("plannedDeparture")
+                    next_res.get("plannedArrival") or next_res.get("checkIn")
                 )
                 checkin_time = checkin_dt.strftime("%H:%M") if checkin_dt else None
                 checkin_date = checkin_dt.strftime("%Y-%m-%d") if checkin_dt else None
