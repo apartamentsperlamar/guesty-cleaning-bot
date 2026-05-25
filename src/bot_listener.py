@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 AYUDA = (
     "ℹ️ Comandos disponibles:\n"
     "/dia — Limpiezas de hoy\n"
-    "/mañana — Limpiezas de mañana\n"
+    "/siguiente — Limpiezas de mañana\n"
     "/semana — Resumen semanal"
 )
 
@@ -79,7 +79,7 @@ class BotListener:
         try:
             if comando == "/dia":
                 self._cmd_dia()
-            elif comando == "/mañana":
+            elif comando == "/siguiente":
                 self._cmd_manana()
             elif comando == "/semana":
                 self._cmd_semana()

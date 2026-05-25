@@ -26,7 +26,7 @@ La limpiadora puede escribir en el chat del bot para obtener información bajo d
 | Comando | Resultado |
 |---------|-----------|
 | `/dia` | Limpiezas programadas para hoy |
-| `/mañana` | Limpiezas programadas para mañana |
+| `/siguiente` | Limpiezas programadas para mañana |
 | `/semana` | Resumen completo de la semana |
 
 ### Arrancar el listener desde GitHub Actions
