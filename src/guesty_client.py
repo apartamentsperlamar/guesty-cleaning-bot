@@ -58,18 +58,42 @@ def _extract_guests(reservation: dict) -> tuple[int, int]:
 
 def _extract_notes(reservation: dict) -> str | None:
     """Extrae notas de la reserva, probando campos en orden de prioridad."""
-    for field in ("notes", "guestNote"):
+    # Campos directos en la reserva
+    for field in ("notes", "guestNote", "otrasNotas", "otherNotes"):
         value = reservation.get(field)
         if value and str(value).strip():
             return str(value).strip()
 
+    # Campos personalizados (customFields): buscar por nombre de campo primero
     custom_fields = reservation.get("customFields")
     if isinstance(custom_fields, list):
+        # Log para diagnóstico: muestra nombres y valores de todos los custom fields
+        if custom_fields:
+            logger.info(
+                "CustomFields disponibles: %s",
+                [
+                    {
+                        "fieldId": f.get("fieldId"),
+                        "fieldName": f.get("fieldName"),
+                        "fieldValue": f.get("fieldValue") or f.get("value"),
+                    }
+                    for f in custom_fields
+                ],
+            )
+        # Primero buscar por nombre de campo que contenga "nota" o "note"
+        for field in custom_fields:
+            name = str(field.get("fieldName") or field.get("name") or "").lower()
+            if "nota" in name or "note" in name or "comment" in name:
+                val = field.get("fieldValue") or field.get("value") or field.get("text")
+                if val and str(val).strip():
+                    return str(val).strip()
+        # Si no encontramos por nombre, devolver el primer campo con contenido
         for field in custom_fields:
             val = field.get("fieldValue") or field.get("value") or field.get("text")
             if val and str(val).strip():
                 return str(val).strip()
     elif isinstance(custom_fields, dict):
+        logger.info("CustomFields (dict) disponibles: %s", list(custom_fields.keys()))
         for val in custom_fields.values():
             if val and str(val).strip():
                 return str(val).strip()
@@ -141,6 +165,7 @@ class GuestyClient:
             "filters": json.dumps(filters),
             "limit": limit,
             "skip": skip,
+            "fields": "checkIn checkOut status listingId listing adults children infants infantsCount guestsDetails notes guestNote otrasNotas customFields _id",
         }
         response = requests.get(
             f"{self.BASE_URL}/v1/reservations",
@@ -261,6 +286,7 @@ class GuestyClient:
             "limit": 1,
             "skip": 0,
             "sort": "checkIn asc",
+            "fields": "checkIn checkOut status listingId listing adults children infants infantsCount guestsDetails notes guestNote otrasNotas customFields _id",
         }
         response = requests.get(
             f"{self.BASE_URL}/v1/reservations",
