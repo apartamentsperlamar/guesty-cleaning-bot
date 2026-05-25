@@ -47,26 +47,68 @@ def _extract_guests(reservation: dict) -> tuple[int, int, int]:
     En Guesty Open API v1 el desglose está en guestStay o stay,
     no como campos directos adults/children.
     """
-    # guestStay contiene el desglose real: {adults, children, infants}
-    guest_stay = reservation.get("guestStay") or reservation.get("stay") or {}
+    rid = reservation.get("_id", "?")
+
+    # Log completo para identificar dónde está el desglose
+    logger.info(
+        "DEBUG FULL [%s] keys=%s",
+        rid,
+        list(reservation.keys()),
+    )
+    logger.info(
+        "DEBUG COUNTS [%s]: guestsCount=%s numberOfGuests=%s adultsCount=%s childrenCount=%s infantsCount=%s",
+        rid,
+        reservation.get("guestsCount"),
+        reservation.get("numberOfGuests"),
+        reservation.get("adultsCount"),
+        reservation.get("childrenCount"),
+        reservation.get("infantsCount"),
+    )
+    logger.info(
+        "DEBUG NESTED [%s]: guestStay=%s guest=%s stay=%s",
+        rid,
+        json.dumps(reservation.get("guestStay"), default=str)[:300],
+        json.dumps(reservation.get("guest"), default=str)[:300],
+        json.dumps(reservation.get("stay"), default=str)[:200],
+    )
+
+    # Intentar todas las rutas conocidas
+    guest_stay = reservation.get("guestStay") or {}
+    if isinstance(guest_stay, list):
+        guest_stay = {}
+    stay = reservation.get("stay") or {}
+    if isinstance(stay, list):
+        stay = {}
+    guest_obj = reservation.get("guest") or {}
 
     adults = int(
-        guest_stay.get("adults")
+        reservation.get("adultsCount")
+        or guest_stay.get("adults")
         or guest_stay.get("adultsCount")
+        or guest_obj.get("adults")
+        or guest_obj.get("adultsCount")
+        or stay.get("adults")
         or reservation.get("adults")
         or 0
     )
     children = int(
-        guest_stay.get("children")
+        reservation.get("childrenCount")
+        or guest_stay.get("children")
         or guest_stay.get("childrenCount")
+        or guest_obj.get("children")
+        or guest_obj.get("childrenCount")
+        or stay.get("children")
         or reservation.get("children")
         or 0
     )
     infants = int(
-        guest_stay.get("infants")
+        reservation.get("infantsCount")
+        or guest_stay.get("infants")
         or guest_stay.get("infantsCount")
+        or guest_obj.get("infants")
+        or guest_obj.get("infantsCount")
+        or stay.get("infants")
         or reservation.get("infants")
-        or reservation.get("infantsCount")
         or 0
     )
 
@@ -75,19 +117,11 @@ def _extract_guests(reservation: dict) -> tuple[int, int, int]:
         total = int(
             reservation.get("guestsCount")
             or reservation.get("numberOfGuests")
-            or guest_stay.get("numberOfGuests")
             or 0
         )
         adults = total
 
-    logger.info(
-        "DEBUG huéspedes [%s]: guestStay=%s | stay=%s | guestsCount=%s | resultado=(%s,%s,%s)",
-        reservation.get("_id", "?"),
-        reservation.get("guestStay"),
-        reservation.get("stay"),
-        reservation.get("guestsCount"),
-        adults, children, infants,
-    )
+    logger.info("DEBUG RESULT [%s]: adults=%s children=%s infants=%s", rid, adults, children, infants)
     return adults, children, infants
 
 
