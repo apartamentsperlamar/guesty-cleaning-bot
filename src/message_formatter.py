@@ -49,14 +49,13 @@ def _fecha_corta(date_str: str | None) -> str | None:
 
 
 def _formato_huespedes(adults: int | None, children: int | None, infants: int | None) -> str:
-    """Devuelve texto legible con desglose de adultos, niños y bebés."""
+    """Devuelve texto legible agrupando adultos+niños, separando bebés."""
     if adults is None:
         return "Sin datos"
+    total = (adults or 0) + (children or 0)
     parts = []
-    if adults:
-        parts.append(f"{adults} adulto{'s' if adults != 1 else ''}")
-    if children:
-        parts.append(f"{children} niño{'s' if children != 1 else ''}")
+    if total:
+        parts.append(f"{total} adulto{'s' if total != 1 else ''}")
     if infants:
         parts.append(f"{infants} bebé{'s' if infants != 1 else ''}")
     return " + ".join(parts) if parts else "Sin datos"
