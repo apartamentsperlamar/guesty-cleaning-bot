@@ -92,11 +92,8 @@ class MessageFormatter:
                 lines.append("⚡ <b>ENTRADA HOY</b>")
 
             # Línea de check-out
-            out_guests = slot.get("outgoing_guests", 0)
-            out_infants = slot.get("outgoing_infants", 0)
-            salientes_txt = _formato_huespedes(out_guests, out_infants)
             checkout_time = slot.get("checkout_time") or "?"
-            lines.append(f"🚪 Check-out: {checkout_time} (reserva saliente: {salientes_txt})")
+            lines.append(f"🚪 Check-out: {checkout_time}")
 
             # Línea de check-in
             if slot.get("has_next_reservation"):
