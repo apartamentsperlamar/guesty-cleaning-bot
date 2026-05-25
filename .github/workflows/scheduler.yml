@@ -18,6 +18,7 @@ on:
           - daily_morning
           - daily_afternoon
           - weekly
+          - listen
 
 jobs:
   run-bot:
@@ -90,6 +91,31 @@ jobs:
       - name: Ejecutar bot — Limpiezas de mañana (15:00)
         if: steps.mode.outputs.mode == 'daily_afternoon' || github.event.inputs.mode == 'daily_afternoon'
         run: python -m src.main daily_afternoon
+        env:
+          GUESTY_CLIENT_ID: ${{ secrets.GUESTY_CLIENT_ID }}
+          GUESTY_CLIENT_SECRET: ${{ secrets.GUESTY_CLIENT_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+  bot-listener:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    if: github.event.inputs.mode == 'listen'
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Arrancar listener de comandos
+        run: python -m src.main listen
         env:
           GUESTY_CLIENT_ID: ${{ secrets.GUESTY_CLIENT_ID }}
           GUESTY_CLIENT_SECRET: ${{ secrets.GUESTY_CLIENT_SECRET }}

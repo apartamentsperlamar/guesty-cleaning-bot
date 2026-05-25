@@ -19,6 +19,24 @@ El bot **no lee tareas de limpieza**. En su lugar:
 
 Una limpieza es **⚡ ALTA PRIORIDAD** cuando el check-in entrante es el mismo día que el check-out.
 
+## Comandos del bot
+
+La limpiadora puede escribir en el chat del bot para obtener información bajo demanda:
+
+| Comando | Resultado |
+|---------|-----------|
+| `/dia` | Limpiezas programadas para hoy |
+| `/mañana` | Limpiezas programadas para mañana |
+| `/semana` | Resumen completo de la semana |
+
+### Arrancar el listener desde GitHub Actions
+
+1. Ve a **Actions → Guesty Cleaning Bot → Run workflow**
+2. Selecciona el modo `listen`
+3. El job `bot-listener` se ejecutará hasta 6 horas escuchando comandos
+
+> **Nota:** El listener solo responde a mensajes del chat configurado en `TELEGRAM_CHAT_ID`.
+
 ## Estructura del proyecto
 
 ```
@@ -31,6 +49,7 @@ guesty-cleaning-bot/
 │   ├── guesty_client.py
 │   ├── telegram_client.py
 │   ├── message_formatter.py
+│   ├── bot_listener.py
 │   └── main.py
 ├── .env.example
 ├── requirements.txt
@@ -62,6 +81,7 @@ cp .env.example .env
 python -m src.main daily_morning
 python -m src.main daily_afternoon
 python -m src.main weekly
+python -m src.main listen    # escucha comandos en tiempo real
 ```
 
 ## Ejecución manual en GitHub Actions

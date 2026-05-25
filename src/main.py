@@ -21,7 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 MADRID = pytz.timezone("Europe/Madrid")
-MODOS_VALIDOS = ("daily_morning", "daily_afternoon", "weekly")
+MODOS_VALIDOS = ("daily_morning", "daily_afternoon", "weekly", "listen")
 
 
 def run_daily_morning(guesty: GuestyClient, telegram: TelegramClient, formatter: MessageFormatter):
@@ -190,6 +190,10 @@ def main():
             run_daily_afternoon(guesty, telegram, formatter)
         elif modo == "weekly":
             run_weekly(guesty, telegram, formatter)
+        elif modo == "listen":
+            from src.bot_listener import BotListener
+            listener = BotListener(guesty, telegram, formatter)
+            listener.run()
     except Exception as e:
         logger.error("Error no controlado en modo '%s':\n%s", modo, traceback.format_exc())
         alerta = (
