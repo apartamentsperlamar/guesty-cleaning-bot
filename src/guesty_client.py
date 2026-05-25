@@ -1,3 +1,4 @@
+import json
 import os
 import logging
 from datetime import datetime, timezone, timedelta
@@ -15,7 +16,6 @@ def _parse_utc_to_madrid(dt_str: str | None):
     if not dt_str:
         return None
     try:
-        # Normalizar el formato quitando la 'Z' final
         dt_str = dt_str.replace("Z", "+00:00")
         dt_utc = datetime.fromisoformat(dt_str)
         if dt_utc.tzinfo is None:
@@ -32,7 +32,6 @@ def _extract_guests(reservation: dict) -> tuple[int, int]:
     children = reservation.get("children", 0) or 0
     guests = adults + children
 
-    # Buscar bebés en orden de prioridad
     infants = (
         reservation.get("infantsCount")
         or reservation.get("infants")
@@ -43,7 +42,7 @@ def _extract_guests(reservation: dict) -> tuple[int, int]:
 
 
 def _extract_notes(reservation: dict) -> str | None:
-    """Extrae notas de la reserva entrante, probando campos en orden de prioridad."""
+    """Extrae notas de la reserva, probando campos en orden de prioridad."""
     for field in ("notes", "guestNote"):
         value = reservation.get(field)
         if value and str(value).strip():
@@ -112,39 +111,48 @@ class GuestyClient:
             "Content-Type": "application/json",
         }
 
+    def _fetch_reservations_page(self, filters: list, limit: int, skip: int) -> dict:
+        """Hace una única llamada paginada a /v1/reservations y devuelve el JSON."""
+        self._ensure_token()
+        params = {
+            "filters": json.dumps(filters),
+            "limit": limit,
+            "skip": skip,
+        }
+        response = requests.get(
+            f"{self.BASE_URL}/v1/reservations",
+            headers=self._get_headers(),
+            params=params,
+            timeout=30,
+        )
+        logger.debug("GET /v1/reservations status=%s url=%s", response.status_code, response.url)
+        response.raise_for_status()
+        return response.json()
+
     @retry(
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=1, min=2, max=30),
         before=before_log(logger, logging.DEBUG),
     )
-    def _get_reservations(self, params: dict) -> list:
-        """Realiza llamadas paginadas a /api/reservations con los parámetros dados."""
-        self._ensure_token()
+    def _get_reservations(self, filters: list) -> list:
+        """Realiza llamadas paginadas a /v1/reservations con los filtros dados."""
         all_reservations = []
         skip = 0
-        limit = params.get("limit", 100)
+        limit = 100
 
         while True:
-            page_params = {**params, "skip": skip, "limit": limit}
-            response = requests.get(
-                f"{self.BASE_URL}/api/reservations",
-                headers=self._get_headers(),
-                params=page_params,
-                timeout=30,
-            )
-            response.raise_for_status()
-            data = response.json()
+            data = self._fetch_reservations_page(filters, limit, skip)
 
-            # La API puede devolver los resultados en distintas claves
+            # La API v1 devuelve los resultados en distintas claves según el endpoint
             results = (
                 data.get("results")
-                or data.get("data", {}).get("results")
+                or (data.get("data") or {}).get("results")
                 or data.get("reservations")
                 or []
             )
             total_count = (
                 data.get("count")
-                or data.get("data", {}).get("count")
+                or (data.get("data") or {}).get("count")
                 or data.get("total")
                 or 0
             )
@@ -160,37 +168,34 @@ class GuestyClient:
     def get_reservations_by_checkout(self, date_str: str) -> list:
         """Devuelve las reservas confirmadas con check-out en la fecha indicada."""
         logger.info("Buscando reservas con check-out el %s...", date_str)
-        params = {
-            "checkOut": date_str,
-            "status": "confirmed",
-            "limit": 100,
-        }
-        reservations = self._get_reservations(params)
+        filters = [
+            {"field": "checkOut", "operator": "$eq", "value": date_str},
+            {"field": "status", "operator": "$in", "value": ["confirmed"]},
+        ]
+        reservations = self._get_reservations(filters)
         logger.info("Encontradas %d reservas con check-out el %s", len(reservations), date_str)
         return reservations
 
     def get_reservations_by_checkin(self, date_str: str) -> list:
         """Devuelve las reservas confirmadas con check-in en la fecha indicada."""
         logger.info("Buscando reservas con check-in el %s...", date_str)
-        params = {
-            "checkIn": date_str,
-            "status": "confirmed",
-            "limit": 100,
-        }
-        reservations = self._get_reservations(params)
+        filters = [
+            {"field": "checkIn", "operator": "$eq", "value": date_str},
+            {"field": "status", "operator": "$in", "value": ["confirmed"]},
+        ]
+        reservations = self._get_reservations(filters)
         logger.info("Encontradas %d reservas con check-in el %s", len(reservations), date_str)
         return reservations
 
     def get_reservations_in_range(self, start_date: str, end_date: str) -> list:
         """Devuelve reservas con check-out entre start_date y end_date (inclusive)."""
         logger.info("Buscando reservas con check-out entre %s y %s...", start_date, end_date)
-        params = {
-            "checkOut[$gte]": start_date,
-            "checkOut[$lte]": end_date,
-            "status": "confirmed",
-            "limit": 100,
-        }
-        reservations = self._get_reservations(params)
+        filters = [
+            {"field": "checkOut", "operator": "$gte", "value": start_date},
+            {"field": "checkOut", "operator": "$lte", "value": end_date},
+            {"field": "status", "operator": "$in", "value": ["confirmed"]},
+        ]
+        reservations = self._get_reservations(filters)
         logger.info("Encontradas %d reservas en el rango", len(reservations))
         return reservations
 
@@ -202,24 +207,32 @@ class GuestyClient:
     def get_next_reservation(self, listing_id: str, after_date: str) -> dict | None:
         """Devuelve la siguiente reserva confirmada en el apartamento, a partir de after_date."""
         self._ensure_token()
+        filters = [
+            {"field": "listingId", "operator": "$eq", "value": listing_id},
+            {"field": "checkIn", "operator": "$gte", "value": after_date},
+            {"field": "status", "operator": "$in", "value": ["confirmed"]},
+        ]
+        params = {
+            "filters": json.dumps(filters),
+            "limit": 1,
+            "skip": 0,
+            "sort": "checkIn asc",
+        }
         response = requests.get(
-            f"{self.BASE_URL}/api/reservations",
+            f"{self.BASE_URL}/v1/reservations",
             headers=self._get_headers(),
-            params={
-                "listingId": listing_id,
-                "checkIn[$gte]": after_date,
-                "status": "confirmed",
-                "limit": 1,
-                "sort": "checkIn",
-            },
+            params=params,
             timeout=30,
+        )
+        logger.debug(
+            "GET /v1/reservations (next) status=%s url=%s", response.status_code, response.url
         )
         response.raise_for_status()
         data = response.json()
 
         results = (
             data.get("results")
-            or data.get("data", {}).get("results")
+            or (data.get("data") or {}).get("results")
             or data.get("reservations")
             or []
         )
@@ -235,12 +248,19 @@ class GuestyClient:
         self._ensure_token()
         try:
             response = requests.get(
-                f"{self.BASE_URL}/api/listings/{listing_id}",
+                f"{self.BASE_URL}/v1/listings/{listing_id}",
                 headers=self._get_headers(),
                 timeout=30,
             )
+            logger.debug(
+                "GET /v1/listings/%s status=%s", listing_id, response.status_code
+            )
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            # La respuesta puede ser el objeto directo o estar anidada bajo "data"
+            if isinstance(data, dict) and "data" in data and isinstance(data["data"], dict):
+                return data["data"]
+            return data
         except Exception as e:
             logger.warning("No se pudo obtener el listing %s: %s", listing_id, e)
             return None
@@ -261,7 +281,7 @@ class GuestyClient:
         for reservation in checkouts:
             listing_id = (
                 reservation.get("listingId")
-                or reservation.get("listing", {}).get("_id")
+                or (reservation.get("listing") or {}).get("_id")
                 or ""
             )
 
@@ -271,6 +291,7 @@ class GuestyClient:
                 listing_name = (
                     listing.get("nickname")
                     or listing.get("name")
+                    or listing.get("title")
                     or listing_id
                 )
             else:
