@@ -44,12 +44,17 @@ def _parse_utc_to_madrid(dt_str: str | None):
 def _extract_guests(reservation: dict) -> tuple[int, int]:
     """Extrae (huéspedes, bebés) de una reserva."""
     guests_details = reservation.get("guestsDetails") or {}
-    adults = reservation.get("adults", 0) or 0
-    children = reservation.get("children", 0) or 0
-    guests = adults + children
+
+    # Guesty v1 puede devolver el total en "guests" o desglosado en adults+children
+    total_direct = reservation.get("guests") or reservation.get("guestsCount") or 0
+    adults = reservation.get("adults") or reservation.get("adultsCount") or guests_details.get("adults") or 0
+    children = reservation.get("children") or reservation.get("childrenCount") or guests_details.get("children") or 0
+    guests = int(total_direct) if total_direct else int(adults) + int(children)
+
     infants = (
         reservation.get("infantsCount")
         or reservation.get("infants")
+        or guests_details.get("infantsCount")
         or guests_details.get("infants")
         or 0
     )
@@ -176,7 +181,6 @@ class GuestyClient:
             "filters": json.dumps(filters),
             "limit": limit,
             "skip": skip,
-            "fields": "checkIn checkOut status listingId listing adults children infants infantsCount guestsDetails notes guestNote otrasNotas customFields _id",
         }
         response = requests.get(
             f"{self.BASE_URL}/v1/reservations",
@@ -297,7 +301,6 @@ class GuestyClient:
             "limit": 1,
             "skip": 0,
             "sort": "checkIn asc",
-            "fields": "checkIn checkOut status listingId listing adults children infants infantsCount guestsDetails notes guestNote otrasNotas customFields _id",
         }
         response = requests.get(
             f"{self.BASE_URL}/v1/reservations",
