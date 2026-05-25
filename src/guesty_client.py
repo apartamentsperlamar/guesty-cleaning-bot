@@ -413,9 +413,9 @@ class GuestyClient:
             else:
                 listing_name = listing_id or "Apartamento desconocido"
 
-            checkout_dt = _parse_utc_to_madrid(
-                reservation.get("checkOut") or reservation.get("plannedArrival")
-            )
+            raw_checkout = reservation.get("checkOut") or reservation.get("plannedArrival")
+            checkout_dt = _parse_utc_to_madrid(raw_checkout)
+            logger.info("DEBUG TIME checkout [%s]: raw=%s → %s", res_id, raw_checkout, checkout_dt)
             checkout_time = checkout_dt.strftime("%H:%M") if checkout_dt else None
             checkout_date = checkout_dt.strftime("%Y-%m-%d") if checkout_dt else date_str
 
@@ -428,9 +428,9 @@ class GuestyClient:
                 next_id = next_res_basic.get("_id")
                 next_res = self.get_reservation_detail(next_id) if next_id else next_res_basic
 
-                checkin_dt = _parse_utc_to_madrid(
-                    next_res.get("checkIn") or next_res.get("plannedDeparture")
-                )
+                raw_checkin = next_res.get("checkIn") or next_res.get("plannedDeparture")
+                checkin_dt = _parse_utc_to_madrid(raw_checkin)
+                logger.info("DEBUG TIME checkin [%s]: raw=%s → %s", next_id, raw_checkin, checkin_dt)
                 checkin_time = checkin_dt.strftime("%H:%M") if checkin_dt else None
                 checkin_date = checkin_dt.strftime("%Y-%m-%d") if checkin_dt else None
                 checkin_is_today = checkin_date == date_str if checkin_date else False
