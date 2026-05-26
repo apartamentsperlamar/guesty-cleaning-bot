@@ -1,12 +1,6 @@
-name: Guesty Cleaning Bot
+name: Guesty — Ejecución manual
 
 on:
-  schedule:
-    - cron: '0 6 * * *'   # Verano (CEST, UTC+2) → 08:00 Madrid
-    - cron: '0 7 * * *'   # Invierno (CET, UTC+1) → 08:00 Madrid
-    - cron: '0 13 * * *'  # Verano (CEST) → 15:00 Madrid
-    - cron: '0 14 * * *'  # Invierno (CET) → 15:00 Madrid
-
   workflow_dispatch:
     inputs:
       mode:
@@ -24,6 +18,7 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    if: github.event.inputs.mode != 'listen'
 
     steps:
       - name: Checkout código
@@ -37,60 +32,8 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
-      - name: Determinar modo de ejecución
-        id: mode
-        run: |
-          python << 'EOF'
-          import os
-          from datetime import datetime
-          import pytz
-
-          madrid = pytz.timezone('Europe/Madrid')
-          now = datetime.now(madrid)
-          hour = now.hour
-          weekday = now.weekday()  # 0=lunes
-
-          manual_mode = os.environ.get('MANUAL_MODE', '')
-
-          if manual_mode:
-              mode = manual_mode
-          elif weekday == 0 and hour in [6, 7, 8]:
-              mode = 'weekly_and_morning'
-          elif hour in [6, 7, 8]:
-              mode = 'daily_morning'
-          elif hour in [13, 14, 15]:
-              mode = 'daily_afternoon'
-          else:
-              mode = 'none'
-
-          print(f"MODE={mode}")
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f"mode={mode}\n")
-          EOF
-        env:
-          MANUAL_MODE: ${{ github.event.inputs.mode }}
-
-      - name: Ejecutar bot — Resumen semanal (lunes)
-        if: steps.mode.outputs.mode == 'weekly_and_morning' || github.event.inputs.mode == 'weekly'
-        run: python -m src.main weekly
-        env:
-          GUESTY_CLIENT_ID: ${{ secrets.GUESTY_CLIENT_ID }}
-          GUESTY_CLIENT_SECRET: ${{ secrets.GUESTY_CLIENT_SECRET }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
-      - name: Ejecutar bot — Limpiezas de hoy (08:00)
-        if: steps.mode.outputs.mode == 'daily_morning' || steps.mode.outputs.mode == 'weekly_and_morning' || github.event.inputs.mode == 'daily_morning'
-        run: python -m src.main daily_morning
-        env:
-          GUESTY_CLIENT_ID: ${{ secrets.GUESTY_CLIENT_ID }}
-          GUESTY_CLIENT_SECRET: ${{ secrets.GUESTY_CLIENT_SECRET }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
-      - name: Ejecutar bot — Limpiezas de mañana (15:00)
-        if: steps.mode.outputs.mode == 'daily_afternoon' || github.event.inputs.mode == 'daily_afternoon'
-        run: python -m src.main daily_afternoon
+      - name: Ejecutar bot
+        run: python -m src.main ${{ github.event.inputs.mode }}
         env:
           GUESTY_CLIENT_ID: ${{ secrets.GUESTY_CLIENT_ID }}
           GUESTY_CLIENT_SECRET: ${{ secrets.GUESTY_CLIENT_SECRET }}
