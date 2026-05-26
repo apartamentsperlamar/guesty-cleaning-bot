@@ -39,3 +39,27 @@ jobs:
           GUESTY_CLIENT_SECRET: ${{ secrets.GUESTY_CLIENT_SECRET }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+  listener:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360   # 6h — escucha comandos durante la jornada de trabajo
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Escuchar comandos Telegram
+        run: python -m src.main listen
+        env:
+          GUESTY_CLIENT_ID: ${{ secrets.GUESTY_CLIENT_ID }}
+          GUESTY_CLIENT_SECRET: ${{ secrets.GUESTY_CLIENT_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
