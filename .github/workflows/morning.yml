@@ -3,6 +3,7 @@ name: Guesty — Limpiezas de hoy (08:00)
 on:
   schedule:
     - cron: '0 6 * * *'   # 08:00 Madrid (CEST, UTC+2)
+  workflow_dispatch:
 
 jobs:
   morning:
