@@ -29,7 +29,7 @@ MESES = {
     12: "diciembre",
 }
 
-SEP = "━━━━━━━━━━━━━━━━━━━━━"
+SEP = "━━━━━━━━━━━━━━━━━"
 
 
 def _fecha_larga(date_obj: date) -> str:
