@@ -1,9 +1,7 @@
 name: Guesty — Limpiezas de mañana (15:00)
 
 on:
-  schedule:
-    - cron: '00 13 * * *'  # 15:00 Madrid (CEST, UTC+2)
-  workflow_dispatch:
+  workflow_dispatch:  # Disparado por cron-job.org a las 13:00 UTC (15:00 Madrid CEST)
 
 jobs:
   afternoon:
