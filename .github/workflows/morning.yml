@@ -1,7 +1,7 @@
-name: Guesty — Limpiezas de hoy (08:00)
+name: Guesty — Limpiezas de hoy (10:00)
 
 on:
-  workflow_dispatch:  # Disparado por cron-job.org a las 06:00 UTC (08:00 Madrid CEST)
+  workflow_dispatch:  # Disparado por cron-job.org a las 08:00 UTC (10:00 Madrid CEST)
 
 jobs:
   morning:
@@ -19,17 +19,6 @@ jobs:
 
       - name: Instalar dependencias
         run: pip install -r requirements.txt
-
-      - name: Resumen semanal (solo lunes)
-        run: |
-          if [ "$(TZ='Europe/Madrid' date +%u)" = "1" ]; then
-            python -m src.main weekly
-          fi
-        env:
-          GUESTY_CLIENT_ID: ${{ secrets.GUESTY_CLIENT_ID }}
-          GUESTY_CLIENT_SECRET: ${{ secrets.GUESTY_CLIENT_SECRET }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
       - name: Limpiezas de hoy
         run: python -m src.main daily_morning
