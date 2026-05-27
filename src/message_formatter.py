@@ -92,7 +92,7 @@ class MessageFormatter:
             lines.append(f"{i}. <b>{nombre}</b>")
 
             if slot.get("high_priority"):
-                lines.append("⚡ <b>ENTRADA HOY</b>")
+                lines.append("⚡ <b>ENTRADA MISMO DÍA</b>")
 
             # Línea de check-out
             checkout_time = slot.get("checkout_time") or "?"
