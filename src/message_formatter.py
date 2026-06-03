@@ -82,7 +82,7 @@ class MessageFormatter:
         slots_ordenados = sorted(cleaning_slots, key=_sort_key)
 
         lines = [
-            f"🧹 LIMPIEZAS DE {period_upper} — {fecha_larga}",
+            f"🖥️ LIMPIEZAS DE {period_upper} — {fecha_larga}",
             SEP,
             "",
         ]
